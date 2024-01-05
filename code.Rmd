@@ -1,0 +1,296 @@
+---
+title: "EDA-Final-Project"
+output: html_document
+date: "2023-04-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(forcats)
+library(naniar)
+```
+
+
+```{r}
+# Load the dataset
+movies_imdb <- read.csv("/Users/kenny/Desktop/Kenny/Spring 2023/FInal_project/imdb_top_1000.csv")
+movies_imdb <- subset(movies_imdb, select = -c(Poster_Link,Overview))
+movies_imdb$Runtime <- as.numeric(gsub(" min", "", movies_imdb$Runtime))
+movies_imdb$Released_Year <- as.numeric(movies_imdb$Released_Year)
+movies_imdb$Gross <- gsub(",", "", movies_imdb$Gross)
+movies_imdb$Gross <- gsub("[$]", "", movies_imdb$Gross)
+movies_imdb$Gross <- as.integer(movies_imdb$Gross)
+head(movies_imdb)
+```
+
+```{r}
+colSums(is.na(movies_imdb))
+
+gg_miss_var(movies_imdb)
+```
+
+# Top 10 Movies
+```{r}
+top_10_rated <- movies_imdb %>%
+  select(Series_Title, IMDB_Rating) %>%
+  arrange(desc(IMDB_Rating)) %>%
+  slice(1:10)
+top_10_rated
+```
+
+# Top Ten Genres
+```{r}
+top_genres <- movies_imdb %>%
+  select(Genre, IMDB_Rating, Meta_score) %>%
+  group_by(Genre) %>%
+  summarise(Genre_Count = n()) %>%
+  arrange((desc(Genre_Count))) %>%
+  slice(1:10)
+top_genres
+```
+
+# Top Ten Directors
+
+```{r}
+top_ten_directors <- movies_imdb %>%
+  select(Director, IMDB_Rating, Meta_score) %>%
+  group_by(Director) %>%
+  summarise(films = n(), avg_IMDB_Rating = mean(IMDB_Rating), avg_Meta_score = mean(Meta_score)) %>%
+  arrange(desc(films)) %>%
+  slice(1:10)
+top_ten_directors
+```
+
+```{r}
+
+ top_ten_directors$Director <- factor(top_ten_directors$Director) %>%
+   fct_reorder(top_ten_directors$films)
+ 
+ directors_plot <- ggplot(top_ten_directors) +
+   geom_col(aes(films, Director), fill = "#287296") +
+   labs(
+     title = "Directors With the Most Films in IMDB Top 1000",
+     subtitle = "1920-2020"
+   ) 
+ directors_plot
+
+```
+
+```{r}
+ runtime_year <- movies_imdb %>%
+   select(Runtime, Released_Year)
+# #convert Runtime & Released_Year to num
+
+ runtime_year$Runtime <- as.integer(gsub('[a-zA-Z]', '', runtime_year$Runtime))
+ runtime_year$Runtime
+
+ runtime_year$Released_Year <-  as.numeric(runtime_year$Released_Year)
+
+ avg_runtime_year <- runtime_year %>%
+   group_by(Released_Year) %>%
+   summarise(avg_runtime = mean(Runtime)) %>%
+   arrange(Released_Year) %>%
+   na.omit()
+
+ head(avg_runtime_year)
+ avg_runtime_year_plot <- ggplot(avg_runtime_year, aes(x = as.numeric(Released_Year), y = as.numeric(avg_runtime))) +
+   geom_line(color = "#287296") +
+   scale_x_continuous(limits = c(1920, 2020), breaks=seq(1920,2020,10)) +
+   scale_y_continuous(limits = c(40, 180), breaks=seq(40,180,10)) +
+   labs(
+     title = "Average Movie Runtime By Year ",
+     subtitle = "Top 1000 rated Movies on IMDB, 1920-2020"
+   ) +
+   ylab("Minutes") +
+   xlab("Year") 
+ avg_runtime_year_plot
+```
+
+# Rating Distribution
+
+```{r}
+ggplot(movies_imdb, aes(IMDB_Rating)) + geom_histogram(bins=100)
+summary(movies_imdb$IMDB_Rating)
+```
+
+
+
+```{r}
+movies_imdb %>%
+group_by(Meta_score) %>%
+count(Meta_score)%>%
+ggplot()+ geom_col(aes(x= Meta_score, y=n,fill= Meta_score))+
+labs(title = 'Movies by  Meta_Score',
+     subtitle ='IMDB Movies') +
+theme_minimal()
+```
+
+
+
+```{r}
+ggplot(data = movies_imdb %>%
+         filter(!is.na(Certificate)) %>%
+         group_by(Certificate) %>%
+         summarise(count=n()), aes(x=reorder(Certificate,-count), y=count, fill=Certificate))+
+  geom_bar(stat = 'identity')+  
+xlab('Type of Certificate')
+```
+
+
+```{r}
+movies_imdb <- na.omit(movies_imdb)
+
+movies_imdb$Released_Year <- as.numeric(movies_imdb$Released_Year)
+movies_imdb <- movies_imdb %>%
+  mutate(Decade = if_else(Released_Year >= 2000,
+                          paste0(Released_Year  %/% 10 * 10, "'s"),
+                          paste0((Released_Year) %/% 10 * 10, "'s")))
+
+decade_avg<- movies_imdb %>%
+  group_by(Decade) %>%
+  summarize(average = mean(Gross, na.rm = TRUE))
+```
+
+```{r}
+decade_avg
+ggplot(data=decade_avg[-4,],aes(x=reorder(Decade, -average), y=average, fill=Decade)) +
+  geom_bar(stat = 'identity') +
+  xlab('Decade')+
+  ylab('Average Earning')+
+  theme(legend.position = c(0.8,0.6))
+```
+
+```{r}
+movies_imdb$Runtime <-as.integer(gsub("[a-zA-Z ]", "", movies_imdb$Runtime))
+movies_imdb$Gross <- as.integer(gsub(",","", movies_imdb$Gross))
+quantile(movies_imdb$Runtime, c(0.33,0.67,1))
+movies_imdb <- movies_imdb %>%
+  mutate(Duration = ifelse(Runtime <=108, "Short", ifelse(Runtime <= 130, "Medium", "Long")))
+
+ggplot(data= movies_imdb %>%
+  group_by(Duration) %>%
+  summarise(count=n()), aes(y=count, x=Duration, fill=count)) +
+  geom_bar(stat= 'identity')+
+  xlab('Duration of the Movies') +
+  ylab("Number of Movies")
+
+ggplot(movies_imdb %>%
+  filter(!is.na(Gross)) %>%
+  group_by(Duration) %>%
+  summarise(Average = mean(Gross, na.rm = TRUE)), aes(y=Average, x= Duration, fill= Average)) +
+  geom_bar(stat='identity') +
+  xlab('Duration of the Movies') +
+  ylab("Average Earning")
+```
+```{r}
+numeric_cols <- sapply(movies_imdb, is.numeric)
+numeric_df <- movies_imdb[, numeric_cols]
+
+correlation_matrix <- cor(numeric_df)
+
+print(correlation_matrix)
+```
+
+```{r, fig.width= 10}
+library(vcd)
+mosaicplot(table(movies_imdb$Decade, movies_imdb$Duration), main = 'Relation b/w Decade and Duration', xlab = "Decade", ylab = "Duration", col = c("red", "blue", "green"))
+```
+
+
+
+```{r}
+#cor_matrix <- cor(movies_imdb[, c("IMDB_Rating", "No_of_Votes", "Gross")])
+
+# Create a heatmap of the correlation matrix
+ggplot(data = reshape2::melt(correlation_matrix), aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient(low = "white", high = "red") +
+  labs(title = "Heatmap of Correlation Matrix", x = "", y = "") +
+  theme(axis.text.x = element_text(angle = 45, vjust =1,hjust=1))
+```
+
+
+
+```{r}
+library(caret)
+library(randomForest)
+
+# Load the dataset
+
+movies_imdb <- na.omit(movies_imdb)
+# Split the dataset into training and testing sets (80% training, 20% testing)
+set.seed(123)
+trainIndex <- createDataPartition(movies_imdb$Gross, p = .8, list = FALSE)
+training <- movies_imdb[trainIndex, ]
+testing <- movies_imdb[-trainIndex, ]
+
+
+
+
+
+
+# Linear Regression Model
+lm_model <- lm(IMDB_Rating ~ Runtime + Meta_score + No_of_Votes + Gross, data = training)
+lm_pred <- predict(lm_model, newdata = testing)
+
+df <- data.frame(Actual = testing$IMDB_Rating, Predicted = lm_pred)
+ggplot(df, aes(x = Actual, y = Predicted)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(x = "Actual Rating", y = "Predicted Rating")
+
+library(rpart)
+# Decision Tree Regression Model
+dt_model <- rpart(IMDB_Rating ~ Runtime + Meta_score + No_of_Votes + Gross, data = training, method = "anova")
+dt_pred <- predict(dt_model, newdata = testing)
+
+
+df <- data.frame(Actual = testing$IMDB_Rating, Predicted = dt_pred)
+ggplot(df, aes(x = Actual, y = Predicted)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(x = "Actual Rating", y = "Predicted Rating")
+# Random Forest Regression Model
+rf_model <- randomForest(IMDB_Rating ~ Runtime + Meta_score + No_of_Votes + Gross, data = training, importance = TRUE)
+rf_pred <- predict(rf_model, newdata = testing)
+
+
+
+df <- data.frame(Actual = testing$IMDB_Rating, Predicted = rf_pred)
+ggplot(df, aes(x = Actual, y = Predicted)) + 
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(x = "Actual Rating", y = "Predicted Rating")
+
+# Evaluate the performance of the models using RMSE
+lm_rmse <- RMSE(lm_pred, testing$IMDB_Rating)
+dt_rmse <- RMSE(dt_pred, testing$IMDB_Rating)
+rf_rmse <- RMSE(rf_pred, testing$IMDB_Rating)
+
+# Print the RMSE values for each model
+cat("Linear Regression RMSE:", lm_rmse, "\n")
+cat("Decision Tree Regression RMSE:", dt_rmse, "\n")
+cat("Random Forest Regression RMSE:", rf_rmse, "\n")
+```
+
+```{r}
+library(ggplot2)
+
+# load the dataset
+
+
+# create the plot
+ggplot(movies_imdb, aes(x=IMDB_Rating, y=Gross)) +
+  geom_boxplot(alpha=0.3) +
+  geom_point(alpha=0.5) +
+  scale_y_continuous(labels = scales::dollar_format(prefix = "$")) +
+  labs(title="Scatter Plot with Overlaid Boxplot", 
+       x="IMDB Rating", y="Gross Earnings")
+
+```
+
